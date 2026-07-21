@@ -1,5 +1,10 @@
 import { FreeScoutAPI } from '../freescout-api.js';
-import { ConversationSchema, ThreadSchema, CustomerSchema } from '../types.js';
+import {
+  ConversationSchema,
+  ThreadSchema,
+  CustomerSchema,
+  TagApiResponseSchema,
+} from '../types.js';
 
 // Mock fetch globally
 const mockFetch = jest.fn();
@@ -270,13 +275,16 @@ describe('FreeScoutAPI', () => {
 
   describe('updateConversation', () => {
     it('should update conversation status', async () => {
+      const json = jest.fn();
       mockFetch.mockResolvedValueOnce({
         ok: true,
-        status: 200,
-        json: async () => ({}),
+        status: 204,
+        json,
       });
 
       await api.updateConversation('123', { status: 'closed' });
+
+      expect(json).not.toHaveBeenCalled();
 
       expect(mockFetch).toHaveBeenCalledWith(
         `${mockBaseUrl}/api/conversations/123`,
@@ -297,6 +305,97 @@ describe('FreeScoutAPI', () => {
       await expect(
         api.updateConversation('123', { status: 'closed' })
       ).rejects.toThrow();
+    });
+  });
+
+  describe('conversation tags', () => {
+    const firstTagPage = {
+      _embedded: {
+        tags: [
+          { id: 1, name: 'vip', counter: 5, color: 1 },
+          { id: 2, name: 'escalated', counter: 2, color: 3 },
+        ],
+      },
+      page: { size: 100, totalElements: 3, totalPages: 2, number: 1 },
+    };
+
+    it('should list global tags with pagination', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => firstTagPage,
+      });
+
+      const result = await api.getTags(undefined, 2, 25);
+      const url = new URL(mockFetch.mock.calls[0][0] as string);
+
+      expect(url.pathname).toBe('/api/tags');
+      expect(url.searchParams.get('page')).toBe('2');
+      expect(url.searchParams.get('pageSize')).toBe('25');
+      expect(url.searchParams.get('conversationId')).toBeNull();
+      expect(TagApiResponseSchema.parse(result)._embedded.tags[0].name).toBe('vip');
+    });
+
+    it('should list tags for a conversation', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => firstTagPage,
+      });
+
+      await api.getTags('123', 1, 100);
+      const url = new URL(mockFetch.mock.calls[0][0] as string);
+
+      expect(url.searchParams.get('conversationId')).toBe('123');
+      expect(url.searchParams.get('page')).toBe('1');
+      expect(url.searchParams.get('pageSize')).toBe('100');
+    });
+
+    it('should retrieve every page of conversation tags', async () => {
+      mockFetch
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          json: async () => firstTagPage,
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          json: async () => ({
+            _embedded: { tags: [{ id: 3, name: 'network', counter: 1, color: 2 }] },
+            page: { size: 100, totalElements: 3, totalPages: 2, number: 2 },
+          }),
+        });
+
+      await expect(api.getAllConversationTags('123')).resolves.toEqual([
+        ...firstTagPage._embedded.tags,
+        { id: 3, name: 'network', counter: 1, color: 2 },
+      ]);
+      expect(mockFetch).toHaveBeenCalledTimes(2);
+    });
+
+    it('should replace tags and handle a 204 response without parsing JSON', async () => {
+      const json = jest.fn();
+      mockFetch.mockResolvedValueOnce({ ok: true, status: 204, json });
+
+      await api.updateConversationTags('123', ['network', 'escalation']);
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        `${mockBaseUrl}/api/conversations/123/tags`,
+        expect.objectContaining({
+          method: 'PUT',
+          body: JSON.stringify({ tags: ['network', 'escalation'] }),
+        })
+      );
+      expect(json).not.toHaveBeenCalled();
+    });
+
+    it('should allow an empty tag array to clear all tags', async () => {
+      mockFetch.mockResolvedValueOnce({ ok: true, status: 204, json: jest.fn() });
+
+      await api.updateConversationTags('123', []);
+
+      expect(JSON.parse(mockFetch.mock.calls[0][1]?.body as string)).toEqual({ tags: [] });
     });
   });
 

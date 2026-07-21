@@ -2,6 +2,8 @@ import type {
   FreeScoutConversation,
   FreeScoutApiResponse,
   FreeScoutRecipients,
+  FreeScoutTag,
+  FreeScoutTagApiResponse,
   FreeScoutThread,
   SearchFilters,
 } from './types.js';
@@ -320,6 +322,10 @@ export class FreeScoutAPI {
           throw new Error(`FreeScout API error: ${response.status} - ${errorText}`);
         }
 
+        if (response.status === 204) {
+          return undefined as T;
+        }
+
         return response.json() as Promise<T>;
       } catch (error: unknown) {
         clearTimeout(timeoutId);
@@ -402,8 +408,41 @@ export class FreeScoutAPI {
       assignTo?: number;
       byUser?: number;
     }
-  ): Promise<FreeScoutConversation> {
-    return this.request<FreeScoutConversation>(`/conversations/${ticketId}`, 'PUT', updates);
+  ): Promise<void> {
+    return this.request<void>(`/conversations/${ticketId}`, 'PUT', updates);
+  }
+
+  async getTags(
+    conversationId?: string,
+    page: number = 1,
+    pageSize: number = 50
+  ): Promise<FreeScoutTagApiResponse> {
+    const params = new URLSearchParams({
+      page: page.toString(),
+      pageSize: pageSize.toString(),
+    });
+
+    if (conversationId) {
+      params.append('conversationId', conversationId);
+    }
+
+    return this.request<FreeScoutTagApiResponse>(`/tags?${params.toString()}`);
+  }
+
+  async getAllConversationTags(ticketId: string): Promise<FreeScoutTag[]> {
+    const firstPage = await this.getTags(ticketId, 1, 100);
+    const tags = [...firstPage._embedded.tags];
+
+    for (let page = 2; page <= firstPage.page.totalPages; page++) {
+      const response = await this.getTags(ticketId, page, 100);
+      tags.push(...response._embedded.tags);
+    }
+
+    return tags;
+  }
+
+  async updateConversationTags(ticketId: string, tags: string[]): Promise<void> {
+    return this.request<void>(`/conversations/${ticketId}/tags`, 'PUT', { tags });
   }
 
   /**

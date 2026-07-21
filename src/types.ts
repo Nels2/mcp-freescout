@@ -59,6 +59,27 @@ export const PageSchema = z.object({
   number: z.number(),
 });
 
+export const TagSchema = z.object({
+  id: z.number(),
+  name: z.string(),
+  counter: z.number(),
+  color: z.number(),
+});
+
+export const TagPageSchema = z.object({
+  size: z.number(),
+  totalElements: z.number(),
+  totalPages: z.number(),
+  number: z.number(),
+});
+
+export const TagApiResponseSchema = z.object({
+  _embedded: z.object({
+    tags: z.array(TagSchema),
+  }),
+  page: TagPageSchema,
+});
+
 export const ApiResponseSchema = z.object({
   _embedded: z
     .object({
@@ -108,6 +129,8 @@ export type FreeScoutThread = z.infer<typeof ThreadSchema>;
 export type FreeScoutCustomer = z.infer<typeof CustomerSchema>;
 export type FreeScoutConversation = z.infer<typeof ConversationSchema>;
 export type FreeScoutApiResponse<T = unknown> = z.infer<typeof ApiResponseSchema> & { data?: T };
+export type FreeScoutTag = z.infer<typeof TagSchema>;
+export type FreeScoutTagApiResponse = z.infer<typeof TagApiResponseSchema>;
 export type TicketAnalysis = z.infer<typeof TicketAnalysisSchema>;
 export type SearchFilters = z.infer<typeof SearchFiltersSchema>;
 export interface FreeScoutRecipients {

@@ -8,8 +8,14 @@ import {
   shouldInheritDraftRecipients,
 } from './draft-recipients.js';
 import { FreeScoutAPI } from './freescout-api.js';
+import { resolveTicketTagNames } from './ticket-tags.js';
 import { TicketAnalyzer } from './ticket-analyzer.js';
-import { TicketAnalysisSchema, SearchFiltersSchema, type FreeScoutRecipients } from './types.js';
+import {
+  TagApiResponseSchema,
+  TicketAnalysisSchema,
+  SearchFiltersSchema,
+  type FreeScoutRecipients,
+} from './types.js';
 import { loadEnv } from './env.js';
 
 type PackageJson = { version: string };
@@ -414,6 +420,77 @@ server.registerTool(
 
     return {
       content: [{ type: 'text', text: JSON.stringify(mailboxes, null, 2) }],
+    };
+  }
+);
+
+server.registerTool(
+  'freescout_list_tags',
+  {
+    title: 'List FreeScout Tags',
+    description:
+      'List all FreeScout tags or the tags applied to a specific ticket. Requires the FreeScout Tags module.',
+    inputSchema: {
+      ticket: z.string().optional().describe('Optional ticket ID, ticket number, or FreeScout URL'),
+      page: z.number().min(1).optional().describe('Page number (default: 1)'),
+      pageSize: z.number().min(1).max(100).optional().describe('Results per page (default: 50)'),
+    },
+    outputSchema: TagApiResponseSchema,
+  },
+  async ({ ticket, page, pageSize }) => {
+    const ticketId = ticket ? api.parseTicketInput(ticket) : undefined;
+    const tags = await api.getTags(ticketId, page, pageSize);
+
+    return {
+      content: [{ type: 'text', text: JSON.stringify(tags, null, 2) }],
+      structuredContent: tags,
+    };
+  }
+);
+
+server.registerTool(
+  'freescout_update_ticket_tags',
+  {
+    title: 'Update FreeScout Ticket Tags',
+    description:
+      'Add, remove, or replace tags on a ticket. Add and remove first load all current tags and then send the complete list back to FreeScout; concurrent tag changes made between those requests may be overwritten. Replace sends exactly the supplied list, and an empty list removes all tags. Unknown tag names are created by FreeScout when applied.',
+    inputSchema: {
+      ticket: z.string().describe('Ticket ID, ticket number, or FreeScout URL'),
+      tags: z.array(z.string().min(1)).describe('Tag names to add, remove, or set; [] clears tags in replace mode'),
+      mode: z.enum(['add', 'remove', 'replace']).describe('How to apply the supplied tag names'),
+    },
+    outputSchema: {
+      success: z.boolean(),
+      message: z.string(),
+      ticketId: z.string(),
+      mode: z.enum(['add', 'remove', 'replace']),
+      tags: z.array(z.string()),
+    },
+  },
+  async ({ ticket, tags, mode }) => {
+    const ticketId = api.parseTicketInput(ticket);
+    let currentTagNames: string[] = [];
+
+    if (mode !== 'replace') {
+      const currentTags = await api.getAllConversationTags(ticketId);
+      currentTagNames = currentTags.map((tag) => tag.name);
+    }
+
+    const resultingTags = resolveTicketTagNames(currentTagNames, tags, mode);
+
+    await api.updateConversationTags(ticketId, resultingTags);
+
+    const output = {
+      success: true,
+      message: `Tags ${{ add: 'added', remove: 'removed', replace: 'replaced' }[mode]} for ticket #${ticketId}`,
+      ticketId,
+      mode,
+      tags: resultingTags,
+    };
+
+    return {
+      content: [{ type: 'text', text: output.message }],
+      structuredContent: output,
     };
   }
 );

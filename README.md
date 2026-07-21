@@ -370,6 +370,41 @@ None
 - "What mailboxes are configured?"
 - "Get mailbox information"
 
+#### `freescout_list_tags`
+
+List all FreeScout tags or the tags currently applied to a ticket. Requires the FreeScout Tags module.
+
+**Parameters:**
+
+- `ticket` (optional): Ticket ID, number, or FreeScout URL. Omit to list global tags.
+- `page` (optional): Page number (minimum: 1).
+- `pageSize` (optional): Results per page (minimum: 1, maximum: 100).
+
+**Natural Language Examples:**
+
+- "List all FreeScout tags"
+- "What tags are applied to ticket #12345?"
+- "Show me the first 100 tags on this ticket"
+
+#### `freescout_update_ticket_tags`
+
+Add, remove, or replace tags on a ticket. FreeScout's native API always replaces the complete tag list, so this tool reads the current tags before `add` and `remove` operations to preserve unrelated tags. `replace` deliberately sets the complete list; pass `[]` with `replace` to remove all tags.
+
+**Parameters:**
+
+- `ticket` (required): Ticket ID, number, or FreeScout URL.
+- `tags` (required): Tag names to add, remove, or replace. Unknown names are automatically created by FreeScout when applied.
+- `mode` (required): `'add'`, `'remove'`, or `'replace'`.
+
+**Natural Language Examples:**
+
+- "Add the network tag to ticket #12345"
+- "Remove the vip tag from this ticket"
+- "Set ticket #12345 tags to overdue and refund"
+- "Remove all tags from ticket #12345"
+
+Tag changes made by another user between an `add`/`remove` read and update can be overwritten because FreeScout does not expose an atomic incremental tag API.
+
 ## Workflow Examples
 
 ### Basic Ticket Analysis
